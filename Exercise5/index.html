@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Socket.IO chat</title>
+    <style>
+      body {
+        margin: 0;
+        padding-bottom: 3rem;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+      }
+
+      #form {
+        background: rgba(0, 0, 0, 0.15);
+        padding: 0.25rem;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        height: 3rem;
+        box-sizing: border-box;
+        backdrop-filter: blur(10px);
+      }
+
+      #nickname-form {
+        background: rgba(0, 0, 0, 0.15);
+        padding: 0.25rem;
+        position: fixed;
+        top: 0;
+        left: 75%;
+        right: 0;
+        display: flex;
+        height: 3rem;
+        box-sizing: border-box;
+        backdrop-filter: blur(10px);
+      }
+
+      #nickname-input {
+        border: none;
+        border-radius: 2rem;
+        margin: 0.25rem;
+      }
+
+      #input {
+        border: none;
+        padding: 0 1rem;
+        flex-grow: 1;
+        border-radius: 2rem;
+        margin: 0.25rem;
+      }
+
+      #input:focus {
+        outline: none;
+      }
+
+      #nickname-input:focus {
+        outline: none;
+      }
+
+      #form > button {
+        background: #333;
+        border: none;
+        padding: 0 1rem;
+        margin: 0.25rem;
+        border-radius: 3px;
+        outline: none;
+        color: #fff;
+      }
+
+      #nickname-form > button {
+        background: #333;
+        border: none;
+        padding: 0 1rem;
+        margin: 0.25rem;
+        border-radius: 3px;
+        outline: none;
+        color: #fff;
+      }
+
+      #messages {
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+      }
+      #messages > li {
+        padding: 0.5rem 1rem;
+      }
+      #messages > li:nth-child(odd) {
+        background: #efefef;
+      }
+    </style>
+  </head>
+
+  <body>
+    <script src="/socket.io/socket.io.js"></script>
+
+    <form id="nickname-form" action="">
+      <input
+        id="nickname-input"
+        autocomplete="off"
+        placeholder="Choose a nickname"
+      /><button>Continue</button>
+    </form>
+
+ <div>
+      <p id="typing-indicator"></p>
+      <ul id="messages"></ul>
+</div>
+
+      <form id="form" action="">
+        <input id="input" autocomplete="off" /><button>Send</button>
+      </form>
+
+      <ul id="user-list"></ul>
+    </div>
+
+    <script>
+      var socket = io();
+      var form = document.getElementById("form");
+      var input = document.getElementById("input");
+      var messages = document.getElementById("messages");
+      var nicknameForm = document.getElementById("nickname-form");
+      var nicknameInput = document.getElementById("nickname-input");
+      var typingIndicator = document.getElementById("typing-indicator");
+      var userList = document.getElementById("user-list");
+      var nickname = ""; // we need this variable to store the nickname
+      var typing = false;
+      var typingTimeout;
+
+      // the below is how the nickname is stored
+      nicknameForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (nicknameInput.value) {
+          // if there is an input for nickname
+          nickname = nicknameInput.value; // we assign this input to the variable nickname defined in global scope
+          console.log("Nickname: " + nickname); // for verification purpose
+          nicknameInput.value = ""; // once we have the nickname stored in 'nickname', we can clear the nicknameInput.value
+          socket.emit("nickname", nickname); // we emit the value of nickname to the client associated with the specific socket
+        }
+      });
+
+      input.addEventListener("input", () => {
+        if (!typing) {
+          socket.emit("typing", nickname);
+          typing = true;
+        }
+
+        clearTimeout(typingTimeout);
+
+        typingTimeout = setTimeout(() => {
+          socket.emit("typing-stop", nickname);
+          typing = false;
+        }, 1000);
+      });
+
+      // we add the message we want to display with the nickname from the server on the client side
+      socket.on("typing", (nickname) => {
+        typingIndicator.textContent = nickname + " is typing...";
+        //console.log(nickname + " is typing...");
+      });
+
+      socket.on("typing-stop", (nickname) => {
+        typingIndicator.textContent = "";
+        //console.log(nickname + " stopped typing...");
+      });
+
+      // the below is how an own message is appended directly for the client
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (input.value) {
+          // if there is an input in the chat form
+          var message = input.value; // we assign this input to the variable message.
+          //Because it is only used here, we don't need to add it to global scope
+          appendMessage({ nickname: "me", message }); //this line directly appends the message if it comes from the same client
+          //(the client is the same one who typed the message in the input)
+          socket.emit("chat message", { nickname: nickname, message: message }); // on "chat message" event, we emit the value of nickname + message to the client associated with the specific socket
+          input.value = ""; //
+        }
+      });
+
+      // the below is the function that appends the data by creating a new list element and using the properties passed to it
+      const appendMessage = function (data) {
+        var item = document.createElement("li");
+        item.textContent = data.nickname + ": " + data.message;
+        messages.appendChild(item);
+        window.scrollTo(0, document.body.scrollHeight);
+      };
+
+      // when the socket emits the "chat message" event, we need to check if it is from the client itself, in which case it has already been appended
+      socket.on("chat message", (data) => {
+        if (data.nickname === nickname) return; //we don't want to append the message again if it comes from the same client
+        appendMessage(data); // if it is from another socket, (the nickname is different), we need to append the message with the corresponding data
+      });
+
+      socket.on("user connected", (message) => {
+        alert(message);
+      });
+
+      socket.on("user list", (users) => {
+        userList.innerHTML = "Connected users: " + users;
+      });
+
+      socket.on("user disconnected", (message) => {
+        alert(message);
+      });
+    </script>
+  </body>
+</html>
